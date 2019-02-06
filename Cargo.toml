@@ -1,0 +1,13 @@
+[package]
+name = "thermal_watchdog"
+version = "0.1.0"
+edition = "2018"
+
+[dependencies]
+log = "0.4.6"
+systemd = "0.4.0"
+env_logger = "0.6.0"
+
+[dependencies.socket2]
+version = "0.3.8"
+features = ["unix"]
