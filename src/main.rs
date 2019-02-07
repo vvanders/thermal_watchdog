@@ -9,6 +9,8 @@ use ipmi::*;
 use control::*;
 
 use env_logger;
+use clap::{Arg, App};
+use ctrlc;
 
 use std::time::Instant;
 use std::io::Result;
@@ -16,6 +18,43 @@ use std::io::Result;
 fn main() {
 	env_logger::Builder::from_env(env_logger::Env::default().default_filter_or("trace")).init();
 
+	let matches = App::new("Thermal Watchdog")	
+					.version("0.1")
+					.author("Val Vanderschaegen <val@vvanders.com>")
+					.about("Fan monitoring for IPMI based platforms. USE AT YOUR OWN RISK, NO WARRANTY IS EXPRESSED OR IMPLIED!")
+					.arg(Arg::with_name("live")
+						.long("live")
+						.short("l")
+						.help("Enables IPMI control, by default TWD operates in \"shadow\" mode. Logging outputs but taking no action"))
+					.arg(Arg::with_name("influx_addr")
+						.short("i")
+						.long("influx_addr")
+						.takes_value(true)
+						.help("InfluxDB server address"))
+					.arg(Arg::with_name("influx_user")
+						.short("u")
+						.long("influx_user")
+						.takes_value(true)
+						.help("InfluxDB user"))
+					.arg(Arg::with_name("influx_pw")
+						.short("p")
+						.long("influx_ps")
+						.takes_value(true)
+						.help("InfluxDB password"))
+		.get_matches();
+
+	let shadow = !matches.is_present("live");
+
+	ctrlc::set_handler(move || {
+		info!("Signal received, aborting and resetting IPMI control");
+		set_fan_manual(false, shadow).unwrap_or(());
+		::std::process::exit(1);
+	}).expect("Unable to set signal handler");
+
+	main_loop(shadow);
+}
+
+fn main_loop(shadow: bool) {
 	let mut control_loop = ControlLoop::new();
 	
 	let cpu_k = 0.05;
@@ -26,7 +65,9 @@ fn main() {
 	control_loop.add_control("Temp".to_string(), 60.0, (cpu_k,cpu_i,cpu_d), 65.0);
 	control_loop.add_control("Temp".to_string(), 60.0, (cpu_k,cpu_i,cpu_d), 65.0);
 
-	let shadow = false;
+	if shadow {
+		info!("TWD running in Shadow Mode, no IPMI commands will be issued");
+	}
 	
 	let mut manual = false;
 	let mut last_update = Instant::now();
