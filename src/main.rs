@@ -4,6 +4,7 @@ extern crate log;
 mod pid;
 mod ipmi;
 mod control;
+mod metrics;
 
 use ipmi::*;
 use control::*;
@@ -16,7 +17,13 @@ use std::time::Instant;
 use std::io::Result;
 
 fn main() {
-	env_logger::Builder::from_env(env_logger::Env::default().default_filter_or("trace")).init();
+	env_logger::Builder::from_env(env_logger::Env::default().default_filter_or("trace"))
+		.filter(Some("tokio_reactor"), log::LevelFilter::Info)
+		.filter(Some("tokio_threadpool"), log::LevelFilter::Info)
+		.filter(Some("mio"), log::LevelFilter::Info)
+		.filter(Some("want"), log::LevelFilter::Info)
+		.filter(Some("hyper"), log::LevelFilter::Info)
+		.init();
 
 	let matches = App::new("Thermal Watchdog")	
 					.version("0.1")
@@ -38,23 +45,36 @@ fn main() {
 						.help("InfluxDB user"))
 					.arg(Arg::with_name("influx_pw")
 						.short("p")
-						.long("influx_ps")
+						.long("influx_pw")
 						.takes_value(true)
 						.help("InfluxDB password"))
+					.arg(Arg::with_name("influx_db")
+						.short("d")
+						.long("influx_db")
+						.takes_value(true)
+						.help("InfluxDB database"))
 		.get_matches();
 
 	let shadow = !matches.is_present("live");
 
 	ctrlc::set_handler(move || {
 		info!("Signal received, aborting and resetting IPMI control");
-		set_fan_manual(false, shadow).unwrap_or(());
+		set_fan_manual(false, shadow, None).unwrap_or(());
 		::std::process::exit(1);
 	}).expect("Unable to set signal handler");
 
-	main_loop(shadow);
+	let metrics = match (matches.value_of("influx_addr"), matches.value_of("influx_db"), matches.value_of("influx_user"), matches.value_of("influx_pw")) {
+		(Some(addr),Some(db),Some(user),Some(pw)) => {
+			trace!("Enabling metrics");
+			Some((addr,db,user,pw))
+		},
+		_ => None
+	};
+
+	main_loop(shadow, metrics);
 }
 
-fn main_loop(shadow: bool) {
+fn main_loop(shadow: bool, metrics: Option<(&str,&str,&str,&str)>) {
 	let mut control_loop = ControlLoop::new();
 	
 	let cpu_k = 0.05;
@@ -77,13 +97,13 @@ fn main_loop(shadow: bool) {
 		last_update = now;
 
 		let elapsed = (duration.as_secs() * 1000 + duration.subsec_millis() as u64) as f32;
-		let loop_result = control_loop.step(elapsed);
+		let loop_result = control_loop.step(elapsed, metrics);
 
 		let set_result = match loop_result {
 			Ok(control) => {
 				let enable = if !manual {
 					info!("Enabling manual fan control");
-					set_fan_manual(true, shadow)
+					set_fan_manual(true, shadow, metrics)
 						.and_then(|_| {
 							manual = true;
 							Ok(())
@@ -92,11 +112,11 @@ fn main_loop(shadow: bool) {
 					Ok(())
 				};
 
-				enable.and_then(|_| set_fan_speed(control, shadow))
+				enable.and_then(|_| set_fan_speed(control, shadow, metrics))
 			},
 			Err(e) => {
 				error!("Unable to run control, resetting to manual: {}", e);
-				set_fan_manual(false, shadow).and_then(|_| {
+				set_fan_manual(false, shadow, metrics).and_then(|_| {
 					manual = false;
 					Ok(())
 				})
@@ -104,14 +124,29 @@ fn main_loop(shadow: bool) {
 		};
 
 		if let Err(_) = set_result {
-			set_fan_manual(false, shadow).unwrap_or(());
 			error!("IPMI control failed, trying to restore automatic fan control and exiting");
+
+			match set_fan_manual(false, shadow, metrics) {
+				Ok(_) => info!("Restored automatic fan control"),
+				Err(e) => error!("Failed to restore automatic fan control: {:?}", e)
+			}
+
 			::std::process::exit(1);
 		}
 	}
 }
 
-fn set_fan_manual(manual: bool, shadow: bool) -> Result<()> {
+fn set_fan_manual(manual: bool, shadow: bool, metrics: Option<(&str,&str,&str,&str)>) -> Result<()> {
+	if let Some(metric_config) = metrics {
+		let value = if manual {
+			1.0
+		} else {
+			0.0
+		};
+
+		metrics::report_metric(&[("manual control".to_string(), value)], &[], metric_config);
+	}
+
 	if shadow {
 		trace!("Shadow: Setting manual fan control to {}", manual);
 		Ok(())
@@ -120,7 +155,11 @@ fn set_fan_manual(manual: bool, shadow: bool) -> Result<()> {
 	}
 }
 
-fn set_fan_speed(speed: f32, shadow: bool) -> Result<()> {
+fn set_fan_speed(speed: f32, shadow: bool, metrics: Option<(&str,&str,&str,&str)>) -> Result<()> {
+	if let Some(metric_config) = metrics {
+		metrics::report_metric(&[("fan speed".to_string(), speed)], &[], metric_config);
+	}
+
 	if shadow {
 		trace!("Shadow: Setting fan speed to {}", speed);
 		Ok(())

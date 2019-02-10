@@ -2,6 +2,7 @@ use std::io::{Error, ErrorKind, Result};
 
 use crate::pid::*;
 use crate::ipmi::*;
+use crate::metrics;
 
 pub struct ControlLoop {
 	pids: Vec<(PID, f32)>,
@@ -21,27 +22,36 @@ impl ControlLoop {
 		self.pvs.push(IPMIRequest { name, status: IPMIValue::Unknown });
 	}
 
-	pub fn step(&mut self, elapsed: f32) -> Result<f32> {
+	pub fn step(&mut self, elapsed: f32, metric_config: Option<(&str,&str,&str,&str)>) -> Result<f32> {
 		trace!("Step {}", elapsed);
 
 		get_ipmi_values(&mut self.pvs)?;
 
 		let mut max = 0.0;
 
+		let mut idx = 0;
 		for ((pid, failsafe), pv) in self.pids.iter_mut().zip(self.pvs.iter()) {
 			let output = match pv.status {
 				IPMIValue::Invalid => Err(Error::new(ErrorKind::InvalidData, format!("{} is invalid", pv.name))),
 				IPMIValue::Unknown => Err(Error::new(ErrorKind::InvalidData, format!("{} is not set", pv.name))),
-				IPMIValue::Temp(temp) => if temp as f32 >= *failsafe {
+				IPMIValue::Temp(temp) => {
+					if let Some(metric_config) = metric_config {
+						metrics::report_metric(&[("temp".to_string(), temp as f32)], &[("sensor".to_string(), format!("{}({})", pv.name, idx))], metric_config);
+					}
+
+					if temp as f32 >= *failsafe {
 						Err(Error::new(ErrorKind::InvalidData, format!("failsafe of {} exceeded: {}", failsafe, temp)))
 					} else {
 						let temp = temp as f32;
-						Ok(pid.update(temp, elapsed))
-					},
+						Ok(pid.update(temp, elapsed, metric_config.map(|v| (format!("{}({})", pv.name, idx),v))))
+					}
+				},
 				IPMIValue::RPM(_rpm) => Err(Error::new(ErrorKind::InvalidData, format!("cannot watch RPM value for {}", pv.name)))
 			}?;
 
-			trace!("Output for {} is {}", pv.name, output);
+			idx += 1;
+
+			debug!("Output for {} is {}", pv.name, output);
 
 			max = output.max(max);
 		}
