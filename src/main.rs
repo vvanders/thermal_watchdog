@@ -10,7 +10,7 @@ use ipmi::*;
 use control::*;
 
 use env_logger;
-use clap::{Arg, App};
+use clap::{Arg, App, SubCommand};
 use ctrlc;
 
 use std::time::Instant;
@@ -53,7 +53,14 @@ fn main() {
 						.long("influx_db")
 						.takes_value(true)
 						.help("InfluxDB database"))
+					.subcommand(SubCommand::with_name("install")
+						.about("Installs Thermal Watchdog as systemd service"))
 		.get_matches();
+
+	if let Some(_) = matches.subcommand_matches("install") {
+		install();
+		return
+	}
 
 	let shadow = !matches.is_present("live");
 
@@ -88,6 +95,9 @@ fn main_loop(shadow: bool, metrics: Option<(&str,&str,&str,&str)>) {
 	if shadow {
 		info!("TWD running in Shadow Mode, no IPMI commands will be issued");
 	}
+
+	use systemd::daemon;
+	daemon::notify(false, [(daemon::STATE_READY,"1")].iter()).unwrap_or(false);
 	
 	let mut manual = false;
 	let mut last_update = Instant::now();
@@ -131,8 +141,12 @@ fn main_loop(shadow: bool, metrics: Option<(&str,&str,&str,&str)>) {
 				Err(e) => error!("Failed to restore automatic fan control: {:?}", e)
 			}
 
+			daemon::notify(false, [(daemon::STATE_STOPPING,"1")].iter()).unwrap_or(false);
+
 			::std::process::exit(1);
 		}
+
+		daemon::notify(false, [(daemon::STATE_WATCHDOG,"1")].iter()).unwrap_or(false);
 	}
 }
 
@@ -166,4 +180,33 @@ fn set_fan_speed(speed: f32, shadow: bool, metrics: Option<(&str,&str,&str,&str)
 	} else {
 		ipmi_set_fan_speed(speed)
 	}
+}
+
+fn install() {
+	let exe_path = "/usr/sbin/thermal_watchdog";
+	let exe = ::std::env::current_exe().expect("Unable to determine binary location");
+
+	::std::fs::copy(exe, exe_path).expect("Unable to copy thermal_watchdog to /usr/sbin, are you running as root?");
+
+	let service_conf = 
+r#"[Unit]
+Description=Thermal Watchdog
+
+[Service]
+Type=notify
+ExecStart=/usr/sbin/thermal_watchdog
+ExecStopPost=/usr/bin/ipmitool raw 0x30 0x30 0x01 0x01
+Restart=on-failure
+WatchdogSec=10
+
+[Install]
+WantedBy=multi-user.target
+"#;
+	let conf_path = "/etc/systemd/system/thermal_watchdog.service";
+
+	let mut service_file = ::std::fs::File::create(conf_path).expect(format!("Unable to open {}, are you running as root?", conf_path).as_str());
+
+	use std::io::Write;
+	service_file.write_all(service_conf.as_bytes()).expect("Unable to write service file, are you running as root?");
+
 }
