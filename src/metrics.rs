@@ -3,7 +3,7 @@ use hyper::{Body, Client, Request};
 
 use futures::future;
 
-pub fn report_metric(event: &[(String,f32)], tags: &[(String,String)], (host,db,user,pw): (&str,&str,&str,&str)) {
+pub fn report_metric(event: &[(String,f32)], tags: &[(String,String)], (host,db,user,pw): &(String,String,Option<String>,Option<String>)) {
 	let fields = event.iter().map(|(n,v)| format!("{}={}", n.replace(" ", "\\ "), v))
 					.fold("".to_string(), |acc,v| {
 						if acc.len() > 0 {
@@ -22,7 +22,10 @@ pub fn report_metric(event: &[(String,f32)], tags: &[(String,String)], (host,db,
 	let client = Client::builder()
 		.keep_alive(false)
 		.build_http();
-	let req = Request::post(format!("{}/write?db={}&u={}&p={}", host, db, user, pw))
+
+	let user = user.as_ref().map(|v| format!("&u={}",v)).unwrap_or(String::new());
+	let pw = pw.as_ref().map(|v| format!("&p={}",v)).unwrap_or(String::new());
+	let req = Request::post(format!("{}/write?db={}{}{}", host, db, user, pw))
 		.body(Body::from(formatted))
 		.expect("Failed to build request");
 

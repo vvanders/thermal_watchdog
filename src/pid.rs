@@ -21,7 +21,7 @@ impl PID {
 		}
 	}
 
-	pub fn update(&mut self, current: f32, elapsed: f32, metric: Option<(String,(&str,&str,&str,&str))>) -> f32 {
+	pub fn update(&mut self, current: f32, elapsed: f32, metric: Option<(String,&(String,String,Option<String>,Option<String>))>) -> f32 {
 		let error = current - self.setpoint;
 
 		self.i_acc += error * elapsed;
@@ -40,8 +40,8 @@ impl PID {
 
 		trace!("PID update ({},{},{}) ({},{},{}) = ({},{},{})", error, self.i_acc, d_acc, self.k_factor, self.i_factor, self.d_factor, p, i ,d);
 
-		if let Some((metric,metric_config)) = metric {
-			metrics::report_metric(&[("p".to_string(),p),("i".to_string(),i),("d".to_string(),d),("v".to_string(),p+i+d)], &[("pid".to_string(), metric)], metric_config);
+		if let Some((ref metric, ref metric_config)) = metric {
+			metrics::report_metric(&[("p".to_string(),p),("i".to_string(),i),("d".to_string(),d),("v".to_string(),p+i+d)], &[("pid".to_string(), metric.clone())], metric_config);
 		}
 
 		p + i + d
