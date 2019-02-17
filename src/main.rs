@@ -311,7 +311,7 @@ Description=Thermal Watchdog
 
 [Service]
 Type=notify
-ExecStart=/usr/sbin/thermal_watchdog -u admin -p influx -d twd -a http://metrics.localdomain:8086
+ExecStart=/usr/sbin/thermal_watchdog
 ExecStopPost=/usr/bin/ipmitool raw 0x30 0x30 0x01 0x01
 Restart=on-failure
 WatchdogSec=10
@@ -355,7 +355,11 @@ failsafe = 65.0
 "#;
 	let toml_path = "/etc/thermal_watchdog.toml";
 
-	let mut toml_file = ::std::fs::File::create(toml_path).expect(format!("Unable to open {}, are you running as root?", toml_path).as_str());
-	toml_file.write_all(toml_conf.as_bytes()).expect("Unable to write config file, are you running as root?");
+	if !::std::path::Path::new(&toml_path).exists() {
+		let mut toml_file = ::std::fs::File::create(toml_path).expect(format!("Unable to open {}, are you running as root?", toml_path).as_str());
+		toml_file.write_all(toml_conf.as_bytes()).expect("Unable to write config file, are you running as root?");
+	} else {
+		info!("Skipping installing {} since it already exists", toml_path);
+	}
 
 }
