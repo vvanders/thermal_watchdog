@@ -300,6 +300,14 @@ fn set_fan_speed(speed: f32, shadow: bool, metrics: &Option<(String,String,Optio
 }
 
 fn install() {
+	use std::path::Path;
+	use std::io::Write;
+
+	if !Path::new("/usr/bin/ipmitool").exists() {
+		error!("Unable to find /usr/bin/ipmitool, please install with \"apt install ipmitool\"");
+		return
+	}
+
 	let exe_path = "/usr/sbin/thermal_watchdog";
 	let exe = ::std::env::current_exe().expect("Unable to determine binary location");
 
@@ -321,10 +329,12 @@ WantedBy=multi-user.target
 "#;
 	let conf_path = "/etc/systemd/system/thermal_watchdog.service";
 
-	let mut service_file = ::std::fs::File::create(conf_path).expect(format!("Unable to open {}, are you running as root?", conf_path).as_str());
-
-	use std::io::Write;
-	service_file.write_all(service_conf.as_bytes()).expect("Unable to write service file, are you running as root?");
+	if !Path::new(conf_path).exists() {
+		let mut service_file = ::std::fs::File::create(conf_path).expect(format!("Unable to open {}, are you running as root?", conf_path).as_str());
+		service_file.write_all(service_conf.as_bytes()).expect("Unable to write service file, are you running as root?");
+	} else {
+		info!("Skipped installing {} since it already exists", conf_path);
+	}
 
 	let toml_conf =
 r#"#[metrics]
@@ -355,11 +365,11 @@ failsafe = 65.0
 "#;
 	let toml_path = "/etc/thermal_watchdog.toml";
 
-	if !::std::path::Path::new(&toml_path).exists() {
+	if !Path::new(&toml_path).exists() {
 		let mut toml_file = ::std::fs::File::create(toml_path).expect(format!("Unable to open {}, are you running as root?", toml_path).as_str());
 		toml_file.write_all(toml_conf.as_bytes()).expect("Unable to write config file, are you running as root?");
 	} else {
-		info!("Skipping installing {} since it already exists", toml_path);
+		info!("Skipped installing {} since it already exists", toml_path);
 	}
 
 }
