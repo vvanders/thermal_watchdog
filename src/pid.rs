@@ -2,22 +2,24 @@ use crate::metrics;
 
 pub struct PID {
 	setpoint: f32,
-	prev_error: f32,
 	i_acc: f32,
 	k_factor: f32,
 	i_factor: f32,
-	d_factor: f32
+	d_factor: f32,
+	filter_points: usize,
+	d_filter: Vec<(f32,f32)>
 }
 
 impl PID {
-	pub fn new(setpoint: f32, (k_factor,i_factor,d_factor): (f32, f32, f32)) -> PID {
+	pub fn new(setpoint: f32, (k_factor,i_factor,d_factor): (f32, f32, f32), filter_points: usize) -> PID {
 		PID {
 			setpoint,
-			prev_error: 0.0,
 			i_acc: 0.0,
 			k_factor,
 			i_factor,
-			d_factor
+			d_factor,
+			filter_points,
+			d_filter: vec!()
 		}
 	}
 
@@ -25,14 +27,10 @@ impl PID {
 		let error = current - self.setpoint;
 
 		self.i_acc += error * elapsed;
-		self.i_acc = self.i_acc.max(0.0);
+		self.i_acc = self.i_acc.max(-0.25);
 
-		let d_acc = if elapsed >= 0.001 {
-				(error - self.prev_error) / elapsed //@todo: smoothing
-			} else {
-				0.0
-			};
-		self.prev_error = error;
+		self.d_filter.push((elapsed, error));
+		let d_acc = calc_diff(&mut self.d_filter, self.filter_points);
 
 		let p = error * self.k_factor;
 		let i = self.i_acc * self.i_factor;
@@ -46,4 +44,16 @@ impl PID {
 
 		p + i + d
 	}
+}
+
+fn calc_diff(data: &mut Vec<(f32, f32)>, filter_points: usize) -> f32 {
+	while data.len() > filter_points + 1 {
+		data.remove(0);
+	}
+
+	data.iter().zip(data.iter().skip(1))
+		.map(|((_,v1),(t,v2))| {
+			(v2 - v1) / t
+		})
+		.sum()
 }

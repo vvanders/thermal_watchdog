@@ -17,8 +17,8 @@ impl ControlLoop {
 		}
 	}
 
-	pub fn add_control(&mut self, name: String, setpoint: f32, tuning: (f32,f32,f32), failsafe: f32) {
-		self.pids.push((PID::new(setpoint, tuning), failsafe));
+	pub fn add_control(&mut self, name: String, setpoint: f32, tuning: (f32,f32,f32), filter_points: usize, failsafe: f32) {
+		self.pids.push((PID::new(setpoint, tuning, filter_points), failsafe));
 		self.pvs.push(IPMIRequest { name, status: IPMIValue::Unknown });
 	}
 
