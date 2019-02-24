@@ -78,7 +78,7 @@ fn main() {
 
 	ctrlc::set_handler(move || {
 		info!("Signal received, aborting and resetting IPMI control");
-		set_fan_manual(false, shadow, &None).unwrap_or(());
+		set_fan_manual(false, shadow, None).unwrap_or(());
 		::std::process::exit(1);
 	}).expect("Unable to set signal handler");
 
@@ -198,7 +198,9 @@ fn main_loop(shadow: bool, config: AppConfig) {
 	} else {
 		None
 	};
-	let metrics = &metrics_conf;
+
+	let metrics = metrics::init_metric_thread(metrics_conf);
+	let metrics = &metrics;
 
 	if shadow {
 		info!("TWD running in Shadow Mode, no IPMI commands will be issued");
@@ -232,7 +234,7 @@ fn main_loop(shadow: bool, config: AppConfig) {
 			Ok(control) => {
 				let enable = if !manual {
 					info!("Enabling manual fan control");
-					set_fan_manual(true, shadow, metrics)
+					set_fan_manual(true, shadow, Some(metrics))
 						.and_then(|_| {
 							manual = true;
 							Ok(())
@@ -245,7 +247,7 @@ fn main_loop(shadow: bool, config: AppConfig) {
 			},
 			Err(e) => {
 				error!("Unable to run control, resetting to manual: {}", e);
-				set_fan_manual(false, shadow, metrics).and_then(|_| {
+				set_fan_manual(false, shadow, Some(metrics)).and_then(|_| {
 					manual = false;
 					Ok(())
 				})
@@ -255,12 +257,15 @@ fn main_loop(shadow: bool, config: AppConfig) {
 		if let Err(_) = set_result {
 			error!("IPMI control failed, trying to restore automatic fan control and exiting");
 
-			match set_fan_manual(false, shadow, metrics) {
+			match set_fan_manual(false, shadow, Some(metrics)) {
 				Ok(_) => info!("Restored automatic fan control"),
 				Err(e) => error!("Failed to restore automatic fan control: {:?}", e)
 			}
 
 			daemon::notify(false, [(daemon::STATE_STOPPING,"1")].iter()).unwrap_or(false);
+
+			metrics.send(metrics::MetricEvent::Exit)
+				.unwrap_or(());
 
 			::std::process::exit(1);
 		}
@@ -269,15 +274,15 @@ fn main_loop(shadow: bool, config: AppConfig) {
 	}
 }
 
-fn set_fan_manual(manual: bool, shadow: bool, metrics: &Option<(String,String,Option<String>,Option<String>)>) -> Result<()> {
-	if let Some(metric_config) = metrics {
-		let value = if manual {
-			1.0
-		} else {
-			0.0
-		};
+fn set_fan_manual(manual: bool, shadow: bool, metric_sender: Option<&metrics::MetricSender>) -> Result<()> {
+	let value = if manual {
+		1.0
+	} else {
+		0.0
+	};
 
-		metrics::report_metric(&[("manual control".to_string(), value)], &[], metric_config);
+	if let Some(metric_sender) = metric_sender {
+		metrics::report_metric(&[("manual control".to_string(), value)], &[], metric_sender);
 	}
 
 	if shadow {
@@ -288,10 +293,8 @@ fn set_fan_manual(manual: bool, shadow: bool, metrics: &Option<(String,String,Op
 	}
 }
 
-fn set_fan_speed(speed: f32, shadow: bool, metrics: &Option<(String,String,Option<String>,Option<String>)>) -> Result<()> {
-	if let Some(metric_config) = metrics {
-		metrics::report_metric(&[("fan speed".to_string(), speed)], &[], metric_config);
-	}
+fn set_fan_speed(speed: f32, shadow: bool, metric_sender: &metrics::MetricSender) -> Result<()> {
+	metrics::report_metric(&[("fan speed".to_string(), speed)], &[], metric_sender);
 
 	if shadow {
 		trace!("Shadow: Setting fan speed to {}", speed);

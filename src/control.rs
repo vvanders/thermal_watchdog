@@ -22,7 +22,7 @@ impl ControlLoop {
 		self.pvs.push(IPMIRequest { name, status: IPMIValue::Unknown });
 	}
 
-	pub fn step(&mut self, elapsed: f32, metric_config: &Option<(String,String,Option<String>,Option<String>)>) -> Result<f32> {
+	pub fn step(&mut self, elapsed: f32, metrics: &metrics::MetricSender) -> Result<f32> {
 		trace!("Step {}", elapsed);
 
 		get_ipmi_values(&mut self.pvs)?;
@@ -35,15 +35,13 @@ impl ControlLoop {
 				IPMIValue::Invalid => Err(Error::new(ErrorKind::InvalidData, format!("{} is invalid", pv.name))),
 				IPMIValue::Unknown => Err(Error::new(ErrorKind::InvalidData, format!("{} is not set", pv.name))),
 				IPMIValue::Temp(temp) => {
-					if let Some(metric_config) = metric_config {
-						metrics::report_metric(&[("temp".to_string(), temp as f32)], &[("sensor".to_string(), format!("{}({})", pv.name, idx))], metric_config);
-					}
+					metrics::report_metric(&[("temp".to_string(), temp as f32)], &[("sensor".to_string(), format!("{}({})", pv.name, idx))], metrics);
 
 					if temp as f32 >= *failsafe {
 						Err(Error::new(ErrorKind::InvalidData, format!("failsafe of {} exceeded: {}", failsafe, temp)))
 					} else {
 						let temp = temp as f32;
-						Ok(pid.update(temp, elapsed, metric_config.as_ref().map(|ref v| (format!("{}({})", pv.name, idx),*v))))
+						Ok(pid.update(temp, elapsed, (format!("{}({})", pv.name, idx), metrics)))
 					}
 				},
 				IPMIValue::RPM(_rpm) => Err(Error::new(ErrorKind::InvalidData, format!("cannot watch RPM value for {}", pv.name)))

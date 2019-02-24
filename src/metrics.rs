@@ -1,9 +1,88 @@
+use std::sync::mpsc;
+use std::thread;
+
 use hyper::rt;
 use hyper::{Body, Client, Request};
 
 use futures::future;
 
-pub fn report_metric(event: &[(String,f32)], tags: &[(String,String)], (host,db,user,pw): &(String,String,Option<String>,Option<String>)) {
+pub enum MetricEvent {
+	Metric(String),
+	Exit
+}
+
+pub type MetricSender = mpsc::Sender<MetricEvent>;
+
+pub fn init_metric_thread(config: Option<(String,String,Option<String>,Option<String>)>) -> mpsc::Sender<MetricEvent> {
+	let (send,recv) = mpsc::channel();
+
+	thread::spawn(move || {
+		loop {
+			match recv.recv() {
+				Ok(MetricEvent::Metric(mut event)) => {
+					loop {
+						match recv.try_recv() {
+							Ok(MetricEvent::Metric(next_event)) => {
+								event += "\n";
+								event += next_event.as_str();
+							},
+							Ok(MetricEvent::Exit) | Err(mpsc::TryRecvError::Disconnected) => {
+								info!("Shutting down metrics thread");
+								return
+							},
+							Err(mpsc::TryRecvError::Empty) => break
+						}
+					}
+
+					if let Some(config) = config.as_ref() {
+						send_metric(config, event);
+					}
+				},
+				Ok(MetricEvent::Exit) | Err(_) => {
+					info!("Shutting down metrics thread");
+					return
+				}
+			};
+		}
+	});
+
+	send
+}
+
+fn send_metric((host,db,user,pw): &(String,String,Option<String>,Option<String>), event: String) {
+	let client = Client::builder()
+		.keep_alive(false)
+		.build_http();
+
+	let user = user.as_ref().map(|v| format!("&u={}",v)).unwrap_or(String::new());
+	let pw = pw.as_ref().map(|v| format!("&p={}",v)).unwrap_or(String::new());
+	let req = Request::post(format!("{}/write?db={}{}{}", host, db, user, pw))
+		.body(Body::from(event))
+		.expect("Failed to build request");
+
+	use rt::{Future, Stream};
+	use tokio::prelude::FutureExt;
+
+	let fut = client.request(req)
+		.and_then(|r| {
+			if r.status().is_success() {
+				trace!("Successful metrics submission");
+			} else {
+				error!("Failed to submit metrics, server returned {} code", r.status().as_u16());
+			}
+
+			r.into_body().for_each(|chunk| {
+				trace!("Metric submit body: {:?}", chunk);
+				future::ok(())
+			})
+		})
+		.timeout(::std::time::Duration::from_secs(2))
+		.map_err(|e| error!("Unable to submit metrics: {}", e));
+
+	rt::run(fut);
+}
+
+pub fn report_metric(event: &[(String,f32)], tags: &[(String,String)], sender: &mpsc::Sender<MetricEvent>) {
 	let hostname = get_hostname()
 		.map(|v| format!(",hostname={}", v))
 		.unwrap_or_else(|e| {
@@ -26,33 +105,10 @@ pub fn report_metric(event: &[(String,f32)], tags: &[(String,String)], (host,db,
 
 	trace!("Submitting metric: {}", formatted);
 
-	let client = Client::builder()
-		.keep_alive(false)
-		.build_http();
-
-	let user = user.as_ref().map(|v| format!("&u={}",v)).unwrap_or(String::new());
-	let pw = pw.as_ref().map(|v| format!("&p={}",v)).unwrap_or(String::new());
-	let req = Request::post(format!("{}/write?db={}{}{}", host, db, user, pw))
-		.body(Body::from(formatted))
-		.expect("Failed to build request");
-
-	use rt::{Future, Stream};
-	let fut = client.request(req)
-		.and_then(|r| {
-			if r.status().is_success() {
-				trace!("Successful metrics submission");
-			} else {
-				error!("Failed to submit metrics, server returned {} code", r.status().as_u16());
-			}
-
-			r.into_body().for_each(|chunk| {
-				trace!("Metric submit body: {:?}", chunk);
-				future::ok(())
-			})
-		})
-		.map_err(|e| error!("Unable to submit metrics: {}", e));
-
-	rt::run(fut);
+	sender.send(MetricEvent::Metric(formatted))
+		.unwrap_or_else(|e| {
+			error!("Unable to write metric to sender: {:?}", e);
+		});
 }
 
 fn get_hostname() -> Result<String,String> {
