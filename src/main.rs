@@ -126,7 +126,8 @@ struct AppPIDConfig {
 	k_factor: f32,
 	i_factor: f32,
 	d_factor: f32,
-	filter_points: Option<usize>
+	filter_points: Option<usize>,
+	min: Option<usize>
 }
 
 #[derive(Deserialize,Clone)]
@@ -207,9 +208,11 @@ fn main_loop(shadow: bool, config: AppConfig) {
 	}
 
 	let filter_points = config.pid.as_ref().and_then(|v| v.filter_points).unwrap_or(5);
-	let pid_settings = config.pid
+	let pid_settings = config.pid.as_ref()
 		.map(|v| (v.k_factor, v.i_factor, v.d_factor))
 		.unwrap_or((0.05, 0.000001, 0.0));
+
+	let min_speed = config.pid.map(|v| v.min.unwrap_or(0)).unwrap_or(0) as f32 / 100.0;
 
 	let mut control_loop = ControlLoop::new();
 
@@ -242,6 +245,8 @@ fn main_loop(shadow: bool, config: AppConfig) {
 				} else {
 					Ok(())
 				};
+
+				let control = control.max(min_speed);
 
 				enable.and_then(|_| set_fan_speed(control, shadow, metrics))
 			},
@@ -357,6 +362,7 @@ r#"#[metrics]
 k_factor = 0.025
 i_factor = 0.000001
 d_factor = 0.0
+min = 5
 
 [[controls]]
 name = "Exhaust Temp"
