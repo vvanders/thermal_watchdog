@@ -270,6 +270,11 @@ fn main_loop(shadow: bool, config: AppConfig) {
 			::std::process::exit(1);
 		}
 
+		match metrics::get_proc_usage() {
+			Ok(cpu) => metrics::report_metric(&[("cpu_usage".to_string(), cpu)], &[], metrics),
+			Err(e) => error!("Unable to report cpu usage: {}", e)
+		}
+
 		daemon::notify(false, [(daemon::STATE_WATCHDOG,"1")].iter()).unwrap_or(false);
 	}
 }

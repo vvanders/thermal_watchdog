@@ -124,3 +124,43 @@ fn get_hostname() -> Result<String,String> {
 		.map(|v| v.trim().to_string())
 		.map_err(|e| format!("Unable to get command output: {:?}", e))
 }
+
+pub fn get_proc_usage() -> Result<f32,String> {
+	let stat1 = get_cpu_stats()?;
+	::std::thread::sleep(::std::time::Duration::from_millis(100));
+	let stat2 = get_cpu_stats()?;
+
+	let user = stat2.0 - stat1.0;
+	let system = stat2.1 - stat1.1;
+	let idle = stat2.2 - stat1.2;
+
+	Ok((user + system) as f32 / (user + system + idle) as f32)
+}
+
+fn get_cpu_stats() -> Result<(usize,usize,usize),String> {
+	let mut content = String::new();
+	let mut file = ::std::fs::File::open("/proc/stat")
+		.map_err(|e| format!("unable to open /proc/stat: {:?}", e))?;
+
+	use ::std::io::Read;
+	file.read_to_string(&mut content)
+		.map_err(|e| format!("unable to read /proc/stat: {:?}", e))?;
+
+	if let Some(line) = content.lines().next() {
+		let split = line.split_whitespace().collect::<Vec<_>>();
+
+		if split.len() < 5 || split[0] != "cpu" {
+			return Ok((0,0,0))
+		}
+
+		let stats = split.iter()
+			.skip(1)
+			.map(|v| usize::from_str_radix(v, 10)
+					.map_err(|_| format!("Unable to parse \"{}\"", v)))
+			.collect::<Result<Vec<_>,_>>()?;
+
+		Ok((stats[0], stats[2], stats[3]))
+	} else {
+		return Ok((0,0,0))
+	}
+}
