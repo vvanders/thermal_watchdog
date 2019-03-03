@@ -9,8 +9,8 @@ Improperly configured this tool has the ability the **_PERMANENTLY DAMAGE_** you
 2. ```git clone https://github.com/vvanders/thermal_watchdog.git```
 3. ```cd thermal_watchdog```
 4. ```cargo build --release```
-5. ```(sudo) cargo run --release -- install```
-6. ```(sudo) apt install ipmitool```
+5. ```(sudo) apt install ipmitool```
+6. ```(sudo) cargo run --release -- install```
 7. ```(sudo) systemctl start thermal_watchdog```
 8. ```(sudo) systemctl enable thermal_watchdog``` - If you want thermal_watchdog to start on boot.
 
