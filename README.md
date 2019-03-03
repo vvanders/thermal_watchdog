@@ -48,7 +48,7 @@ setpoint = 55.0
 failsafe = 70.0
 ```
 
-## pid section
+## Pid section
 The ```pid``` section controls the core PID(Proportonal, Integral, Derivative) algorithm used to keep a set of temperature sensors under a specific setpoint.
 
 PID control works based on an ```error value``` derived from a sepcific ```setpoint```(target temperature) and ```process variable```(temperature sensor). The ```error value``` is simply ```error value = (process variable) - setpoint```. For each temperature sensor an individual PID controller is created from a set of common parameters.
@@ -62,17 +62,17 @@ PID control works based on an ```error value``` derived from a sepcific ```setpo
 ### PID deviations from *classic* model
 
 In order to prevent the algorithm misbehaving in destructive ways the following changes apply from a "classic" PID control:
-* The accumulator for **I** Factor is clamped to ```-0.25``` to ```1.0```.
+* The accumulator for **I** Factor is clamped to ```-0.25``` to ```1.0```. This prevents a server running "under temp" to take many minutes or longer to recover once temperature exceeds setpoints.
 * Final output to control is the ```max(...)``` of all current PID controllers.
 
-## controls section
+## Controls section
 The ```controls``` section is an array of temperature controls that are monitored and considered for fan control. Mutliple controls with the same name can be added to handle sensors that don't have a unique name.
 
 * ```name```: Name of the sensor as listed in ```ipmitool sdr list full```.
 * ```setpoint```: Target temperature for the sensor. PID controller will try to control the fans to keep the sensor below this value.
 * ```failsafe```: If the sensor meets or exceeds this value **_ALL PID control will be disabled_**. It is recommended that this is set ~5 degrees below T-CASE max which you can find from a processor's relevant datasheet.
 
-## metrics section
+## Metrics section
 This section lets you upload metrics from Thermal Watchdog to an InfuxDB server for visualization(I.E. Grafana).
 
 ![](graph.png)
