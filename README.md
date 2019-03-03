@@ -72,8 +72,10 @@ The ```controls``` section is an array of temperature controls that are monitore
 * ```setpoint```: Target temperature for the sensor. PID controller will try to control the fans to keep the sensor below this value.
 * ```failsafe```: If the sensor meets or exceeds this value **_ALL PID control will be disabled_**. It is recommended that this is set ~5 degrees below T-CASE max which you can find from a processor's relevant datasheet.
 
-## metrics
+## metrics section
 This section lets you upload metrics from Thermal Watchdog to an InfuxDB server for visualization(I.E. Grafana).
+
+![](graph.png)
 
 * ```influx_user```: Username for InfluxDB
 * ```influx_pw```: Password for InfluxDB
@@ -90,7 +92,11 @@ Thermal Watchdog publishes the following metrics:
 * p/i/d/v - Current values of PID controller(and output as ```v```) tagged with each sensor.
 
 # Tuning controls
-<TBD>
+The defaults in ```/etc/thermal_watchdog.conf``` are meant to be a good starting point, however you will want to tune them specifically to your setup/CPU/etc.
+
+Generally P and I terms of the PID controller are sufficent to maintain a specific setpoint. Start by adjusting I term until the temperature stays stable under idle. Once you have the server stable under idle for ~5m I've found using the ```stress -c <Total CPUs>``` gives a good idea of how the tuning behaves under sudden load.
+
+Continue to tweak P and D terms until you have a reasonable response to IDLE -> FULL LOAD -> IDLE scenario.
 
 # Enabling Thermal Watchdog
 Once you've run Thermal Watchdog in Shadow Mode for a while you can enable fan control by editing ```/etc/systemd/system/thermal_watchdog.service```.
