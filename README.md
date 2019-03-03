@@ -91,6 +91,8 @@ Thermal Watchdog publishes the following metrics:
 * cpu_usage - Trending CPU usage from /prod/stats.
 * p/i/d/v - Current values of PID controller(and output as ```v```) tagged with each sensor.
 
+A pre-made Grafana Dashboard can be found [here](dashboard.json).
+
 # Tuning controls
 The defaults in ```/etc/thermal_watchdog.conf``` are meant to be a good starting point, however you will want to tune them specifically to your setup/CPU/etc.
 
