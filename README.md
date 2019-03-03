@@ -64,3 +64,46 @@ PID control works based on an ```error value``` derived from a sepcific ```setpo
 In order to prevent the algorithm misbehaving in destructive ways the following changes apply from a "classic" PID control:
 * The accumulator for **I** Factor is clamped to ```-0.25``` to ```1.0```.
 * Final output to control is the ```max(...)``` of all current PID controllers.
+
+## controls section
+The ```controls``` section is an array of temperature controls that are monitored and considered for fan control. Mutliple controls with the same name can be added to handle sensors that don't have a unique name.
+
+* ```name```: Name of the sensor as listed in ```ipmitool sdr list full```.
+* ```setpoint```: Target temperature for the sensor. PID controller will try to control the fans to keep the sensor below this value.
+* ```failsafe```: If the sensor meets or exceeds this value **_ALL PID control will be disabled_**. It is recommended that this is set ~5 degrees below T-CASE max which you can find from a processor's relevant datasheet.
+
+## metrics
+This section lets you upload metrics from Thermal Watchdog to an InfuxDB server for visualization(I.E. Grafana).
+
+* ```influx_user```: Username for InfluxDB
+* ```influx_pw```: Password for InfluxDB
+* ```influx_addr```: Address for InfluxDB (required)
+* ```influx_db```: Database for InfluxDB (required)
+
+All metrics include a tag with the hostname of the machine.
+
+Thermal Watchdog publishes the following metrics:
+* fan speed - Current fan output from 0.0 to 1.0.
+* manual control - ```1``` If Thermal Watchdog is controlling fan output, ```0``` if it isn't(Shadow Mode).
+* temp - Value for each control watch, tagged with control name.
+* cpu_usage - Trending CPU usage from /prod/stats.
+* p/i/d/v - Current values of PID controller(and output as ```v```) tagged with each sensor.
+
+# Tuning controls
+<TBD>
+
+# Enabling Thermal Watchdog
+Once you've run Thermal Watchdog in Shadow Mode for a while you can enable fan control by editing ```/etc/systemd/system/thermal_watchdog.service```.
+
+Replace the ExecStart line:
+```
+...
+ExecStart=/usr/sbin/thermal_watchdog
+...
+```
+with
+```
+ExecStart=/usr/sbin/thermal_watchdog -l
+```
+
+This puts Thermal Watchdog in ```live``` mode. Restart Thermal Watchdog with ```systemctl restart thermal_watchdog``` and Thermal Watchdog will now be controlling the fan output on your machine.
