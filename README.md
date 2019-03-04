@@ -4,7 +4,7 @@ This project controls the fan speed of 11th/12th gen Dell servers to keep them f
 This was originally built to deal with the fact that unrecognized HDD/PCIe components sometimes put 11th/12th gen Dell servers into "fan overdrive" but can be used anywhere you want precise control of fan speed.
 
 # WARNING - This project is proveded AS-IS WITH NO WARRANTY
-Improperly configured this tool has the ability the **_PERMANENTLY DAMAGE_** your server! We are not responsible for any bugs, misbehavior or configurations that cause damage. It is your responsibility to propertly vet all code, understand the pid control algorithm and configuration parameters of this software.
+Improperly configured this tool has the ability to **_PERMANENTLY DAMAGE_** your server! We are not responsible for any bugs, misbehavior or configurations that may cause damage. It is your responsibility to propertly vet all code, understand the pid control algorithm and configuration parameters of this software.
 
 # Installation
 1. If you don't have it, install the Rust compiler: ```curl https://sh.rustup.rs -sSf | sh```
@@ -16,7 +16,7 @@ Improperly configured this tool has the ability the **_PERMANENTLY DAMAGE_** you
 7. ```(sudo) systemctl start thermal_watchdog```
 8. ```(sudo) systemctl enable thermal_watchdog``` - If you want thermal_watchdog to start on boot.
 
-Note that Thermal Watchdog starts in *Shadow Mode* where it will run but all IPMI commands are not actually comitted. To enable fan control read through the following configuration section.
+Note that Thermal Watchdog starts in *Shadow Mode* where it will run however all IPMI commands are ignored. To enable fan control read through the following configuration section.
 
 # Configuration
 After Thermal Watchdog is installed it will read from a configuration file at "/etc/thermal_watchdog.conf" that follows TOML syntax.
@@ -50,7 +50,7 @@ setpoint = 55.0
 failsafe = 70.0
 ```
 
-## Pid section
+## PID section
 The ```pid``` section controls the core PID(Proportonal, Integral, Derivative) algorithm used to keep a set of temperature sensors under a specific setpoint.
 
 PID control works based on an ```error value``` derived from a sepcific ```setpoint```(target temperature) and ```process variable```(temperature sensor). The ```error value``` is simply ```error value = (process variable) - setpoint```. For each temperature sensor an individual PID controller is created from a set of common parameters.
@@ -64,8 +64,8 @@ PID control works based on an ```error value``` derived from a sepcific ```setpo
 ### PID deviations from *classic* model
 
 In order to prevent the algorithm misbehaving in destructive ways the following changes apply from a "classic" PID control:
-* The accumulator for **I** Factor is clamped to ```-0.25``` to ```1.0```. This prevents a server running "under temp" to take many minutes or longer to recover once temperature exceeds setpoints.
-* Final output to control is the ```max(...)``` of all current PID controllers.
+* The accumulator for **I** Factor is clamped to ```-0.25``` to ```1.0```. This prevents a server running "under temp" for a long period of time taking many minutes or longer to recover once temperature exceeds setpoints.
+* Final output to IPMI control is the ```max(...)``` of all current PID controllers.
 
 ## Controls section
 The ```controls``` section is an array of temperature controls that are monitored and considered for fan control. Mutliple controls with the same name can be added to handle sensors that don't have a unique name.
@@ -100,7 +100,9 @@ The defaults in ```/etc/thermal_watchdog.conf``` are meant to be a good starting
 
 Generally P and I terms of the PID controller are sufficent to maintain a specific setpoint. Start by adjusting I term until the temperature stays stable under idle. Once you have the server stable under idle for ~5m I've found using the ```stress -c <Total CPUs>``` gives a good idea of how the tuning behaves under sudden load.
 
-Continue to tweak P and D terms until you have a reasonable response to IDLE -> FULL LOAD -> IDLE scenario.
+Continue to tweak P and D terms until you have a reasonable response to IDLE -> FULL LOAD -> IDLE scenario. You may have to reduce I as you introduce more P factor.
+
+Note that while tweaking parameters I've found it easier to run Thermal Watchdog directly via ```cargo run --release -- -l``` than via the built-in systemd service. Once you have a working set of peatemers see the section below for permanently enabling the service.
 
 # Enabling Thermal Watchdog
 Once you've run Thermal Watchdog in Shadow Mode for a while you can enable fan control by editing ```/etc/systemd/system/thermal_watchdog.service```.
