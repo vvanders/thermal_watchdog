@@ -10,11 +10,12 @@ Improperly configured this tool has the ability to **_PERMANENTLY DAMAGE_** your
 1. If you don't have it, install the Rust compiler: ```curl https://sh.rustup.rs -sSf | sh```
 2. ```git clone https://github.com/vvanders/thermal_watchdog.git```
 3. ```cd thermal_watchdog```
-4. ```cargo build --release```
-5. ```(sudo) apt install ipmitool```
-6. ```(sudo) cargo run --release -- install```
-7. ```(sudo) systemctl start thermal_watchdog```
-8. ```(sudo) systemctl enable thermal_watchdog``` - If you want thermal_watchdog to start on boot.
+4. ```apt install libsystemd-dev```
+5. ```cargo build --release```
+6. ```(sudo) apt install ipmitool```
+7. ```(sudo) cargo run --release -- install```
+8. ```(sudo) systemctl start thermal_watchdog```
+9. ```(sudo) systemctl enable thermal_watchdog``` - If you want thermal_watchdog to start on boot.
 
 Note that Thermal Watchdog starts in *Shadow Mode* where it will run however all IPMI commands are ignored. To enable fan control read through the following configuration section.
 
