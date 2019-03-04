@@ -1,5 +1,7 @@
 # Thermal Watchdog
-This project uses IPMI for a PID driven fan control of Dell based servers to keep them from sounding like a jet engine in your homelab.
+This project controls the fan speed of 11th/12th gen Dell servers to keep them from sounding like a jet engine in your homelab. Using a standard PID controller via IPMI it selects an optimal fan speed for a target maximum temperature.
+
+This was originally built to deal with the fact that unrecognized HDD/PCIe components sometimes put 11th/12th gen Dell servers into "fan overdrive" but can be used anywhere you want precise control of fan speed.
 
 # WARNING - This project is proveded AS-IS WITH NO WARRANTY
 Improperly configured this tool has the ability the **_PERMANENTLY DAMAGE_** your server! We are not responsible for any bugs, misbehavior or configurations that cause damage. It is your responsibility to propertly vet all code, understand the pid control algorithm and configuration parameters of this software.
